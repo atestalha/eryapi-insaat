@@ -26,25 +26,40 @@ try {
   console.log("Klasör oluşturma atlandı:", err.message);
 }
 
-if (!fs.existsSync(DB_FILE)) fs.copyFileSync(SEED_FILE, DB_FILE);
-
 // ---------------- Veritabanı (JSON dosyası) ----------------
-let db = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+let db;
+try {
+  if (!fs.existsSync(DB_FILE)) fs.copyFileSync(SEED_FILE, DB_FILE);
+  db = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+} catch (err) {
+  db = fs.existsSync(SEED_FILE)
+    ? JSON.parse(fs.readFileSync(SEED_FILE, "utf8"))
+    : { ayarlar: {}, metinler: {}, hizmetler: [], projeler: [], mesajlar: [] };
+}
 db.mesajlar = db.mesajlar || [];
 function save() {
-  const tmp = DB_FILE + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
-  fs.renameSync(tmp, DB_FILE);
+  try {
+    const tmp = DB_FILE + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
+    fs.renameSync(tmp, DB_FILE);
+  } catch (err) {
+    console.log("Kayıt atlandı (salt okunur sunucu):", err.message);
+  }
 }
 
 // ---------------- Şifre / oturum ----------------
 function hashPassword(pw, salt = crypto.randomBytes(16).toString("hex")) {
   return { salt, hash: crypto.scryptSync(pw, salt, 64).toString("hex") };
 }
-if (!fs.existsSync(AUTH_FILE)) {
-  fs.writeFileSync(AUTH_FILE, JSON.stringify({ ...hashPassword(DEFAULT_PASSWORD), secret: crypto.randomBytes(32).toString("hex") }, null, 2));
+let auth;
+try {
+  if (!fs.existsSync(AUTH_FILE)) {
+    fs.writeFileSync(AUTH_FILE, JSON.stringify({ ...hashPassword(DEFAULT_PASSWORD), secret: crypto.randomBytes(32).toString("hex") }, null, 2));
+  }
+  auth = JSON.parse(fs.readFileSync(AUTH_FILE, "utf8"));
+} catch (err) {
+  auth = { ...hashPassword(DEFAULT_PASSWORD), secret: crypto.randomBytes(32).toString("hex") };
 }
-let auth = JSON.parse(fs.readFileSync(AUTH_FILE, "utf8"));
 function checkPassword(pw) {
   const h = crypto.scryptSync(String(pw || ""), auth.salt, 64);
   return crypto.timingSafeEqual(h, Buffer.from(auth.hash, "hex"));
@@ -226,7 +241,11 @@ admin.post("/sifre", (req, res) => {
   if (!checkPassword(eski)) return res.status(400).json({ hata: "Mevcut şifre hatalı." });
   if (!yeni || String(yeni).length < 8) return res.status(400).json({ hata: "Yeni şifre en az 8 karakter olmalı." });
   auth = { ...hashPassword(String(yeni)), secret: crypto.randomBytes(32).toString("hex") };
-  fs.writeFileSync(AUTH_FILE, JSON.stringify(auth, null, 2));
+  try {
+    fs.writeFileSync(AUTH_FILE, JSON.stringify(auth, null, 2));
+  } catch (err) {
+    console.log("Şifre dosyaya yazılamadı:", err.message);
+  }
   res.setHeader("Set-Cookie", `eryapi_oturum=${makeToken()}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_HOURS * 3600}`);
   res.json({ ok: true });
 });
@@ -253,9 +272,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ hata: "Sunucu hatası" });
 });
 
-app.listen(PORT, () => {
-  console.log("\n  ER Yapı İnşaat çalışıyor");
-  console.log("  Site:  http://localhost:" + PORT);
-  console.log("  Panel: http://localhost:" + PORT + "/admin\n");
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log("\n  ER Yapı İnşaat çalışıyor");
+    console.log("  Site:  http://localhost:" + PORT);
+    console.log("  Panel: http://localhost:" + PORT + "/admin\n");
+  });
+}
 module.exports = app;
