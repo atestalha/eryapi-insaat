@@ -253,3 +253,4 @@ app.listen(PORT, () => {
   console.log("  Site:  http://localhost:" + PORT);
   console.log("  Panel: http://localhost:" + PORT + "/admin\n");
 });
+module.exports = app;
