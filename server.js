@@ -20,7 +20,12 @@ const PUBLIC_DIR = path.join(ROOT, "public");
 const UPLOAD_DIR = path.join(PUBLIC_DIR, "uploads");
 const DEFAULT_PASSWORD = process.env.ADMIN_SIFRE || "eryapi2026";
 
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+try {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+} catch (err) {
+  console.log("Klasör oluşturma atlandı:", err.message);
+}
+
 if (!fs.existsSync(DB_FILE)) fs.copyFileSync(SEED_FILE, DB_FILE);
 
 // ---------------- Veritabanı (JSON dosyası) ----------------
